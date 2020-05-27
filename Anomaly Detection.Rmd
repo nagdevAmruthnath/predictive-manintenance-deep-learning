@@ -1,0 +1,112 @@
+---
+title: "Anomaly Detection"
+author: "Dr. Nagdev Amruthnath"
+date: "5/26/2020"
+output: html_document
+---
+In this document we will discuss on how to use keras package to build an anomaly detection model using auto encoders. Auto encoders is a unsupervised learning technique where the initial data is encoded to lower dimensional and then decoded (reconstructed) back. Based on our inital data and reconstructed data we will calculate the score.
+
+### About Dataset
+The data is contains 66 features extracted from a vibration signal from x, y & z axis. For the experiment, a 3 axis vibration sensor was hooked up to a table press drill. There are total for 4 failure modes within the data set. This data also as numeric and categorical labels. 
+
+## Load the libraries 
+```{r setup, include=FALSE}
+library(keras)
+library(dplyr)
+```
+
+## Load dataset to R
+The data is loaded and the labels are removed. The data set is split into train and test. Train includes calibration data and test includes remaining data set. The data is converted to matrix as required by keras package.
+```{r}
+data = read.csv("features.csv", header = T) %>% select(-c(yLabel, Y)) %>% as.data.frame()
+data = sapply(data, as.numeric)
+
+train = data[1:50,] %>% as.matrix()
+test = data[51:357,] %>% as.matrix()
+```
+
+## Set parameters for DNN model
+We are creating a set of parameters below. This is optional. But, it makes it easy for hyper parameter tuning. 
+```{r pressure, echo=FALSE}
+dropOut = 0.2
+atvn = "sigmoid"
+batch = 10
+```
+
+## Auto encoder model
+The autoencoder model used here is a symmetric model. 
+Input layer: Includes the train shape of the data. ie, total of 66 features. 
+Encoder: we tie up the input later with 4 layers with batch normalization and dropout. 
+Decoder: Its a symmeric of encoder. 
+
+```{r}
+input_layer = 
+  layer_input(shape = c(66)) 
+
+encoder =
+  input_layer %>% 
+  layer_dense(units = 512, activation = atvn) %>% 
+  layer_batch_normalization() %>% 
+  layer_dropout(rate = dropOut) %>% 
+  layer_dense(units = 128, activation = atvn) %>%
+  layer_dropout(rate = dropOut) %>%
+  layer_dense(units = 64, activation = atvn) %>%
+  layer_dense(units = 32) 
+
+decoder = 
+  encoder %>% 
+  layer_dense(units = 64, activation = atvn) %>% 
+  layer_dropout(rate = dropOut) %>% 
+  layer_dense(units = 128, activation = atvn) %>%
+  layer_dropout(rate = dropOut) %>%
+  layer_dense(units = 512, activation = atvn) %>%
+  layer_dense(units = 66) # 
+```
+
+## Training
+Next we combile our input layer and decoder to form a autoencoder model. Next, we compile the model with different optimizar and loss function. Finally we can fit the model and plot the results. 
+```{r}
+autoencoder_model = keras_model(inputs = input_layer, outputs = decoder)
+
+autoencoder_model %>% compile(
+  loss='mean_squared_error',
+  optimizer='adam'
+)
+
+summary(autoencoder_model)
+
+history =
+  autoencoder_model %>%
+  keras::fit(train,
+             train,
+             epochs=100,
+             shuffle=TRUE,
+             batch = batch,
+             validation_data= list(test, test)
+             )
+
+plot(history)
+```
+## Reconstruction error and anomaly limits
+
+We have a function caluclate the reconstuction error and based on train dataset, we will use 85% quantile to set the anomaly limit. We finally combine the dataset to plot the results. Below, we see all green is healthy data points and red is abnormal condition. 
+```{r}
+reconstMSE = function(i){
+  reconstructed_points = autoencoder_model %>% predict(x = data[i,] %>% matrix(nrow = 1, ncol = 66))
+  return(mean((data[i,] - reconstructed_points)^2))
+}
+
+data = train
+trainRecon = data.frame(data = train, score = do.call(rbind, lapply(1:50, FUN = reconstMSE)))
+
+anomalyLimit = quantile(trainRecon$score, p = 0.85)
+
+data = test
+testRecon = data.frame(data = test, score = do.call(rbind, lapply(1:nrow(data), FUN = reconstMSE)))
+
+Recondata = rbind(trainRecon, testRecon)
+
+
+plot(Recondata$score, col = ifelse(Recondata$score>anomalyLimit, "red", "green"), pch = 19, xlab = "observations", ylab = "score")
+abline(h = anomalyLimit, col = "red", lwd = 1)
+```
