@@ -10,7 +10,7 @@ In this document we will discuss on how to use keras package to build an anomaly
 The data is contains 66 features extracted from a vibration signal from x, y & z axis. For the experiment, a 3 axis vibration sensor was hooked up to a table press drill. There are total for 4 failure modes within the data set. This data also as numeric and categorical labels. 
 
 ## Load the libraries 
-```{r setup, include=FALSE}
+```{r}
 library(keras)
 library(dplyr)
 ```
@@ -27,7 +27,7 @@ test = data[51:357,] %>% as.matrix()
 
 ## Set parameters for DNN model
 We are creating a set of parameters below. This is optional. But, it makes it easy for hyper parameter tuning. 
-```{r pressure, echo=FALSE}
+```{r}
 dropOut = 0.2
 atvn = "sigmoid"
 batch = 10
@@ -87,6 +87,7 @@ history =
 
 plot(history)
 ```
+
 ## Reconstruction error and anomaly limits
 
 We have a function caluclate the reconstuction error and based on train dataset, we will use 85% quantile to set the anomaly limit. We finally combine the dataset to plot the results. Below, we see all green is healthy data points and red is abnormal condition. 
