@@ -1,0 +1,86 @@
+---
+title: "Fault Classification"
+author: "Dr. Nagdev Amruthnath"
+date: "5/26/2020"
+output: html_document
+---
+
+
+### About Dataset
+The data is contains 66 features extracted from a vibration signal from x, y & z axis. For the experiment, a 3 axis vibration sensor was hooked up to a table press drill. There are total for 4 failure modes within the data set. This data also as numeric and categorical labels. 
+
+## Load the libraries 
+```{r}
+library(keras)
+library(dplyr)
+library(caret)
+```
+
+## Load dataset to R
+The data is loaded and the labels are removed. The data set is split into train and test. Train includes calibration data and test includes remaining data set. The data is converted to matrix as required by keras package.
+```{r}
+data = read.csv("features.csv", header = T) %>% select(-c(Y)) %>% as.data.frame()
+
+x = caret::createDataPartition(data$yLabel, p = 0.8)
+
+train_x =  data[x$Resample1, ] %>% select(-c(yLabel)) %>% as.matrix()
+train_y = data[x$Resample1, ] %>% pull(yLabel) %>% factor(labels = c(0,1,2,3)) %>% keras::to_categorical(num_classes = 4)
+test_x = data[-x$Resample1, ] %>% select(-c(yLabel)) %>% as.matrix()
+test_y = data[-x$Resample1, ] %>% pull(yLabel) %>% factor(labels = c(0,1,2,3)) %>% keras::to_categorical()
+```
+
+
+## Set parameters for DNN model
+We are creating a set of parameters below. This is optional. But, it makes it easy for hyper parameter tuning. 
+```{r}
+dropOut = 0.05
+atvn = "relu"
+batch = 10
+```
+
+## Deep learning model
+
+```{r}
+model = keras_model_sequential()
+model %>%
+  layer_flatten(input_shape = ncol(train_x)) %>%
+  layer_dense(units = 128, activation = atvn) %>%
+  layer_batch_normalization() %>% 
+  layer_dropout(dropOut) %>% 
+  layer_dense(units = 256, activation = atvn) %>%
+  layer_dropout(dropOut) %>% 
+  layer_dense(units = 512, activation = atvn) %>%
+  layer_dense(units = ncol(train_y), activation = 'softmax')
+
+summary(model)
+```
+
+## Model Training
+```{r}
+model %>% compile(
+  optimizer = 'adam', 
+  loss = 'categorical_crossentropy',
+  metrics = c('accuracy')
+)
+
+history = model %>% 
+          fit(x = train_x, 
+              y = train_y, 
+              epochs = 100,
+              batch_size = batch,
+              validation_data= list(test_x, test_y)
+              )
+
+plot(history)
+
+history
+```
+
+# Predictions on Test Data
+
+```{r}
+predictions = model %>% predict_classes(test_x) %>% as.factor
+
+data_test_y = data[-x$Resample1, ] %>% pull(yLabel) %>% factor(labels = c(0,1,2,3)) 
+confusionMatrix(data_test_y, predictions)
+```
